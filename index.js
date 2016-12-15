@@ -1,8 +1,8 @@
 
 const Onfido = require('onfido')
-const Applicants = require('./applicants')
-const Checks = require('./checks')
-const Reports = require('./reports')
+const createApplicantsAPI = require('./applicants')
+const createChecksAPI = require('./checks')
+const createWebhooksAPI = require('./webhooks')
 const { sub, Promise } = require('./utils')
 const defaultClient = Onfido.ApiClient.instance
 
@@ -16,15 +16,29 @@ const rawApi = new Onfido.DefaultApi()
 const onfido = Promise.promisifyAll(rawApi)
 
 module.exports = function ({ db }) {
-  const applicants = sub(db, 'a')
-  const checks = sub(db, 'c')
-  const reports = sub(db, 'r')
+  const applicantsDB = sub(db, 'a')
+  const checksDB = sub(db, 'c')
+  const webhooksDB = sub(db, 'w')
 
-  const client = {
-    applicants: Applicants({ db: applicants, onfido }),
-    checks: Checks({ db: checks, onfido }),
-    reports: Reports({ db: reports, onfido })
+  const applicantsAPI = createApplicantsAPI({
+    db: applicantsDB,
+    onfido
+  })
+
+  const checksAPI = createChecksAPI({
+    db: checksDB,
+    applicants: applicantsAPI,
+    onfido
+  })
+
+  const webhooksAPI = createWebhooksAPI({
+    db: webhooksDB,
+    onfido
+  })
+
+  return {
+    applicants: applicantsAPI,
+    checks: checksAPI,
+    webhooks: webhooksAPI
   }
-
-  return client
 }
