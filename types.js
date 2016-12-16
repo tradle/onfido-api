@@ -1,7 +1,7 @@
 
 exports.side = typeforce.oneOf('front', 'back')
 
-exports.docType = typeforce.oneOf('jpg', 'png', 'pdf')
+exports.docType = typeforce.oneOf('passport', '')
 
 exports.webhookEvent = typeforce.oneOf(
   'report.completed',
@@ -11,3 +11,5 @@ exports.webhookEvent = typeforce.oneOf(
   'check.form_opened',
   'check.form_completed'
 )
+
+exports.docFileType = typeforce.oneOf('png', 'jpg', 'jpeg', 'pdf')

@@ -1,58 +1,47 @@
 
 const typeforce = require('typeforce')
+const request = require('superagent')
 const collect = Promise.promisify(require('stream-collector'))
 const secondary = require('level-secondary')
 const { Promise, co, sub, omit } = require('./utils')
 const types = require('./types')
 
 module.exports = function createChecksAPI ({ db, onfido, applicants, token }) {
+  const externalApplicantIdProp = applicants.externalIdProp
+  const localExternalApplicantIdProp = 'applicantExternalId'
   const checks = sub(db, 'c')
   checks.byApplicantId = secondary(checks, 'applicantId')
-  checks.byApplicantPermalink = secondary(checks, 'applicantPermalink')
-
-  const reports = sub(db, 'r')
-  reports.byApplicantId = secondary(reports, 'applicantId')
-  reports.byApplicantPermalink = secondary(reports, 'applicantPermalink')
-  reports.byCheckId = secondary(reports, 'checkId')
+  checks.byApplicantExternalId = secondary(checks, externalApplicantIdProp)
 
   promisify(checks)
-  promisify(reports)
 
-  return {
-    check: checkAPI
-    list: checkAPI,
-    reports: listReports,
-    report: getReport
-  }
+  const putCheck = co(function* putCheck (check) {
+    yield checks.promise.put(check.id, check)
+    return check
+  })
 
-  function putCheck (check) {
-    return checks.promise.put(check.id, check)
-  }
-
-  function putChecks (applicant, check) {
+  const putChecks = co(function* putChecks (applicant, check) {
+    const neutered = checks.map(check => omit(check, ['reports']))
     const checksBatch = checks.map(check => {
-      check = omit(check, ['reports'])
       check.applicantId = applicant.id
-      check.applicantPermalink = applicant.permalink
+      check[localExternalApplicantIdProp] = applicant[externalApplicantIdProp]
       return { type: 'put', key: check.id, value: check }
     })
 
-    return checks.promise.batch(checksBatch)
+    yield checks.promise.batch(checksBatch)
+    // return stored value
+    return neutered
+  })
+
+  function createDocumentCheck (externalApplicantId) {
+    return createCheck(externalApplicantId, { reports: ['document'] })
   }
 
-  function putReport (report) {
-    return reports.promise.put(report.id, report)
+  function createFaceCheck (externalApplicantId) {
+    return createCheck(externalApplicantId, { reports: ['facial_similarity'] })
   }
 
-  function createDocumentCheck (applicantPermalink, opts) {
-    return createCheck(applicantPermalink, { reports: ['document'] })
-  }
-
-  function createFaceCheck (applicantPermalink, opts) {
-    return createCheck(applicantPermalink, { reports: ['face_comparison'] })
-  }
-
-  const createCheck = co(function* createCheck (applicantPermalink, opts) {
+  const createCheck = co(function* createCheck (externalApplicantId, opts) {
     if (opts.type && opts.type !== 'express') {
       throw new Error('only "express" checks supported at this time')
     }
@@ -65,43 +54,32 @@ module.exports = function createChecksAPI ({ db, onfido, applicants, token }) {
     // typeforce(typeforce.arrayOf(typeforce.oneOf(['document', 'face_comparison'])), reports)
 
     opts.type = 'express'
-    const applicant = yield applicants.byPermalink(applicantPermalink)
-    const result = onfido.createCheck(applicant.id, opts)
-    return Promise.all([
-      putChecks(applicant, [result]),
-      updateReportsForChecks(applicant, [result])
-    ])
-  })
-
-  const updateReportsForChecks = co(function* updateReportsForChecks (applicant, checkObjs) {
-    if (typeof applicant === 'string') {
-      applicant = yield applicants.byPermalink(applicant)
-    }
-
-    const reportsBatch = checkObjs.map(check => {
-      return check.reports.map(report => {
-        report.applicantId = applicant.id
-        report.applicantPermalink = applicant.permalink
-        report.checkId = check.id
-        return { type: 'put', key: report.id, value: report }
-      })
+    const applicant = yield applicants.byExternalId(externalApplicantId)
+    const check = onfido.createCheck(applicant.id, opts)
+    check.reports.forEach(report => {
+      report.checkId = check.id
+      report.applicantId = applicant.id
+      report[localExternalApplicantIdProp] = applicant[externalApplicantIdProp]
     })
-    .reduce(function (all, next) {
-      return all.concat(next)
-    }, [])
 
-    return reports.promise.batch(reportsBatch)
+    yield Promise.all([
+      putChecks(applicant, [check]),
+      reports.create(reports)
+    ])
+
+    return check
   })
+
 
   const listChecks = co(function listChecks (opts) {
-    const applicantPermalink = opts.applicant
-    if (opts.fetch !== false) return fetchChecks(opts)
+    const externalApplicantId = opts.applicant
+    if (opts.fetch) return fetchChecks(opts)
 
-    return getSavedChecksForApplicant(applicantPermalink)
+    return getSavedChecksForApplicant(externalApplicantId)
   })
 
   const fetchChecks = co(function* fetchChecks (opts) {
-    const applicant = yield applicants.byPermalink(opts.applicant)
+    const applicant = yield applicants.byExternalId(opts.applicant)
     const result = yield request
       .post(`https://api.onfido.com/v2/applicants/${applicant.id}/checks?expand=reports`)
       .set('Authorization', 'Token token=' + token)
@@ -109,61 +87,20 @@ module.exports = function createChecksAPI ({ db, onfido, applicants, token }) {
 
     // onfido js client doesn't support `expand` query param
     // const result = yield onfido.listChecks(opts.applicant)
+    const reports = result.reduce(function (memo, check) {
+      return memo.concat(check.reports)
+    }, [])
+
     yield Promise.all([
       putChecks(applicant, result),
-      updateReportsForChecks(applicant, result)
+      reports.update(reports)
     ])
   })
 
-  const listReports = co(function listReports (opts) {
-    if (opts.fetch !== false) {
-      return fetchReports(opts)
-    }
-
-    if (opts.checkId) {
-      return collect(reports.byCheckId.createReadStream({
-        start: opts.checkId,
-        end: opts.checkId,
-        keys: false
-      }))
-    }
-
-    const applicantPermalink = opts.applicant
-    return getSavedReportsForApplicant(applicantPermalink)
-  })
-
-  const getReport = co(function getReport (opts) {
-    if (opts.fetch !== false) {
-      return fetchReport(opts)
-    }
-
-    return reports.promise.get(opts.reportId)
-  })
-
-  function fetchReport (opts) {
-    let { checkId, reportId } = opts
-    if (!checkId) {
-      const report = yield getReport({ opts.reportId })
-      checkId = report.checkId
-    }
-
-    const report = yield onfido.findReport(checkId, opts.reportId)
-    yield updateReportsForChecks([{ id: checkId, reports: [report] }])
-    return report
-  }
-
-  function getSavedReportsForApplicant (applicantPermalink, opts={}) {
-    return collect(reports.byApplicantPermalink.createReadStream({
-      start: applicantPermalink,
-      end: applicantPermalink,
-      keys: opts.keys || false
-    }))
-  }
-
-  const getSavedChecksForApplicant = co(*function getSavedChecksForApplicant (applicantPermalink, opts={}) {
-    const stream = checks.byApplicantPermalink.createReadStream({
-      start: applicantPermalink,
-      end: applicantPermalink,
+  const getSavedChecksForApplicant = co(*function getSavedChecksForApplicant (externalApplicantId, opts={}) {
+    const stream = checks.byApplicantExternalId.createReadStream({
+      start: externalApplicantId,
+      end: externalApplicantId,
       keys: false
     })
 
@@ -175,41 +112,48 @@ module.exports = function createChecksAPI ({ db, onfido, applicants, token }) {
     }))
 
     savedChecks.forEach(function (check, i) {
-      check.reports  =reportSets[i]
+      check.reports = reportSets[i]
     })
 
     return savedChecks
   })
 
-  const fetchReports = co(function* fetchReports (opts) {
-    const checkId = opts
-    const applicantPermalink = opts.applicant
-    if (!checkId) {
-      // fetch all reports for all checks for this applicant
-      const checkIds = yield getSavedChecksForApplicant(applicantPermalink, { values: false })
-      return Promise.all(checkIds.map(checkId => fetchReports({ checkId })))
-    }
+  const getCheck = co(function* getCheck (checkId) {
+    const check = yield checks.promise.get(checkId)
+    check.reports = yield reports.list({ checkId: data.id, fetch: false })
+    return check
+  })
 
-    const reports = yield onfido.listReports(checkId)
-    yield updateReportsForChecks(applicantPermalink, [{ id: checkId, reports: reports }])
-    return reports
+  const update = co(function* update (check) {
+    const saved = yield getCheck(check.id)
+    deepExtend(saved, check)
+    return putCheck(saved)
   })
 
   function checkAPI (checkId) {
     return {
       get: getCheck.bind(null, checkId),
+      createDocumentCheck,
+      createFaceCheck,
       report: function (opts) {
         opts.checkId = checkId
-        return getReport(opts)
+        return reports.get(opts)
       },
       reports: function (opts) {
         opts.checkId = checkId
-        return listReports(opts)
+        return reports.list(opts)
       },
       uploadDocument: uploadDocument.bind(null, checkId),
       uploadLivePhoto: uploadLivePhoto.bind(null, checkId),
       get: getOrCreateApplicant.bind(null, checkId),
       update: updateApplicant.bind(null, checkId)
     }
+  }
+
+  return {
+    list: checkAPI,
+    get: getCheck,
+    update: update,
+    check: checkAPI
   }
 }

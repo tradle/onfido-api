@@ -3,6 +3,7 @@ const Onfido = require('onfido')
 const createApplicantsAPI = require('./applicants')
 const createChecksAPI = require('./checks')
 const createWebhooksAPI = require('./webhooks')
+const createReportTypeGroupsAPI = require('./reportTypeGroups')
 const { sub, Promise } = require('./utils')
 const defaultClient = Onfido.ApiClient.instance
 
@@ -15,30 +16,35 @@ Token.apiKey = "YOUR API KEY"
 const rawApi = new Onfido.DefaultApi()
 const onfido = Promise.promisifyAll(rawApi)
 
-module.exports = function ({ db }) {
+module.exports = function ({ db, idProp }) {
   const applicantsDB = sub(db, 'a')
   const checksDB = sub(db, 'c')
   const webhooksDB = sub(db, 'w')
 
   const applicantsAPI = createApplicantsAPI({
     db: applicantsDB,
-    onfido
+    onfido,
+    token,
+    idProp
   })
 
   const checksAPI = createChecksAPI({
     db: checksDB,
     applicants: applicantsAPI,
-    onfido
+    onfido,
+    token
   })
 
   const webhooksAPI = createWebhooksAPI({
     db: webhooksDB,
-    onfido
+    onfido,
+    token
   })
 
   return {
     applicants: applicantsAPI,
     checks: checksAPI,
-    webhooks: webhooksAPI
+    webhooks: webhooksAPI,
+    reportTypeGroups: createReportTypeGroupsAPI({ onfido })
   }
 }
