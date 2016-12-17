@@ -1,7 +1,7 @@
 
 exports.side = typeforce.oneOf('front', 'back')
 
-exports.docType = typeforce.oneOf('passport', '')
+exports.docType = typeforce.oneOf('passport', 'license')
 
 exports.webhookEvent = typeforce.oneOf(
   'report.completed',

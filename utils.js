@@ -16,3 +16,7 @@ exports.sub = function sub (db, prefix) {
 }
 
 exports.omit = omit
+
+exports.promisify = function promisify (obj) {
+  obj.promise = Promise.promisifyAll(obj)
+}

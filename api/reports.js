@@ -6,20 +6,7 @@ const secondary = require('level-secondary')
 const { Promise, co, sub, omit } = require('./utils')
 const types = require('./types')
 
-module.exports = function createReportsAPI ({ db, onfido, applicants, token }) {
-  const externalApplicantIdProp = applicants.externalIdProp
-  const localExternalApplicantIdProp = 'applicantExternalId'
-
-  db = sub(db, 'r')
-  db.byApplicantId = secondary(db, 'applicantId')
-  db.byApplicantExternalId = secondary(db, localExternalApplicantIdProp)
-  db.byCheckId = secondary(db, 'checkId')
-  promisify(db)
-
-  // function putReport (report) {
-  //   return db.promise.put(report.id, report)
-  // }
-
+module.exports = function createReportsAPI ({ db, onfido, token }) {
   const update = co(function* update (reports) {
     const arr = [].concat(reports)
     const saved = yield Promise.all(arr.map(r => db.promise.get(r.id)))
@@ -83,14 +70,6 @@ module.exports = function createReportsAPI ({ db, onfido, applicants, token }) {
     const report = yield onfido.findReport(checkId, opts.reportId)
     yield update(report, checkId)
     return report
-  }
-
-  function getSavedReportsForApplicant (externalApplicantId, opts={}) {
-    return collect(db.byApplicantExternalId.createReadStream({
-      start: externalApplicantId,
-      end: externalApplicantId,
-      keys: opts.keys || false
-    }))
   }
 
   const fetchReports = co(function* fetchReports (opts) {

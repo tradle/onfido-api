@@ -27,28 +27,15 @@ module.exports = function createApplicantsAPI ({ db, onfido, token }) {
     list,
     byId: getApplicantById,
     byExternalId: getApplicantByExternalId,
-    create: getOrCreateApplicant,
-    update: createOrUpdateApplicant,
+    create: createApplicant,
+    update: updateApplicant,
     'delete': deleteApplicant,
     uploadDocument: uploadDocument,
     uploadLivePhoto: uploadLivePhoto,
     applicant: applicantAPI
   })
 
-  function create (externalId, applicantData) {
-    return createApplicant(externalId, applicantData)
-  }
-
-  const createOrUpdateApplicant = co(function* createOrUpdateApplicant (externalId, applicantData) {
-    try {
-      yield byExternalId(externalId)
-      return updateApplicant(externalId, applicantData)
-    } catch (err) {
-      return createApplicant(externalId, applicantData)
-    }
-  })
-
-  const createApplicant = co(function* createApplicant (externalId, applicantData) {
+  const createApplicant = co(function* createApplicant (applicantData) {
     typeforce({
       first_name: typeforce.String,
       last_name: typeforce.String,
@@ -56,24 +43,18 @@ module.exports = function createApplicantsAPI ({ db, onfido, token }) {
       // TODO: optional props
     }, applicantData)
 
-    return updateApplicant(externalId, applicantData, true)
+    return onfido.createApplicant({ data: applicantData })
   })
 
-  const updateApplicant = co(function* updateApplicant (externalId, applicantData, create) {
-    const method = create ? 'createApplicant' : 'updateApplicant'
-    const applicant = yield api[method]({ data: applicantData })
-    applicant[externalIdProp] = externalId
-    yield putApplicant(applicant)
-    return applicant
+  const updateApplicant = co(function* updateApplicant (applicantData) {
+    return onfido.updateApplicant({ data: applicantData })
   })
 
   /**
    * Does not currently support pagination
    */
-  function list ({ fetch=false }) {
-    return fetch
-      ? onfido.listApplicants()
-      : collect(applicants.createReadStream({ keys: false }))
+  function list () {
+    return onfido.listApplicants()
   }
 
   const uploadDocument = co(function* uploadDocument (externalId, doc) {
@@ -92,21 +73,12 @@ module.exports = function createApplicantsAPI ({ db, onfido, token }) {
       file = new Buffer(fileInfo.data, 'base64')
     }
 
-    const applicant = yield get(externalId)
-    if (!applicant) throw new Error('applicant not found')
-
     // const result = yield onfido.uploadDocument(applicant.id, doc)
-    const result = yield request
+    return yield request
       .post(`'https://api.onfido.com/v2/applicants/${applicant.id}/documents`)
       .type('form')
       .field({ file, type, side })
       .send()
-
-    result.applicantId = applicant.id
-    result[externalIdProp] = externalId
-    result[docExternalIdProp] = doc.id
-    yield putDoc(result)
-    return result
   })
 
   const uploadLivePhoto = co(function* uploadLivePhoto (externalId, photo) {
