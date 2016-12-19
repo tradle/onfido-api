@@ -1,18 +1,19 @@
 
 const querystring = require('querystring')
 const typeforce = require('typeforce')
-const request = require('superagent')
 const collect = Promise.promisify(require('stream-collector'))
 const secondary = require('level-secondary')
-const { Promise, co, sub, omit } = require('./utils')
+const { Promise, co, sub, omit, baseRequest } = require('./utils')
 const types = require('./types')
 
 module.exports = function createChecksAPI ({ onfido, token }) {
-  function createDocumentCheck (applicantId) {
+  const request = baseRequest(token)
+
+  const createDocumentCheck = function createDocumentCheck (applicantId) {
     return createCheck(applicantId, { reports: ['document'] })
   }
 
-  function createFaceCheck (applicantId) {
+  const createFaceCheck = function createFaceCheck (applicantId) {
     return createCheck(applicantId, { reports: ['facial_similarity'] })
   }
 
@@ -29,7 +30,9 @@ module.exports = function createChecksAPI ({ onfido, token }) {
     // typeforce(typeforce.arrayOf(typeforce.oneOf(['document', 'face_comparison'])), reports)
 
     opts.type = 'express'
-    return onfido.createCheck(applicantId, opts)
+    return request
+      .post(`https://api.onfido.com/v2/applicants/${applicantId}/checks`)
+      .send(opts)
   })
 
   const fetchCheck = co(function* fetchCheck ({ applicantId, checkId, expandReports }) {
@@ -37,7 +40,6 @@ module.exports = function createChecksAPI ({ onfido, token }) {
     if (expandReports) query.expand = 'reports'
     return request
       .post(`https://api.onfido.com/v2/applicants/${applicantId}/checks/${checkId}?${querystring.stringify(query)}`)
-      .set('Authorization', 'Token token=' + token)
       .send()
   })
 
@@ -46,7 +48,6 @@ module.exports = function createChecksAPI ({ onfido, token }) {
     if (expandReports) query.expand = 'reports'
     return request
       .post(`https://api.onfido.com/v2/applicants/${applicantId}/checks??${querystring.stringify(query)}`)
-      .set('Authorization', 'Token token=' + token)
       .send()
   })
 
@@ -71,7 +72,8 @@ module.exports = function createChecksAPI ({ onfido, token }) {
   // }
 
   return {
-    create: createCheck,
+    createDocumentCheck: createDocumentCheck,
+    createFaceCheck: createFaceCheck,
     list: fetchChecks,
     get: fetchCheck,
     // check: checkAPI

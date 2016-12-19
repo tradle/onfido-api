@@ -3,22 +3,35 @@ const typeforce = require('typeforce')
 const request = require('superagent')
 const collect = Promise.promisify(require('stream-collector'))
 const secondary = require('level-secondary')
-const { Promise, co, sub, omit } = require('./utils')
+const { Promise, co, sub, omit, setPromiseInterface } = require('./utils')
 const types = require('./types')
+const {
+  applicantIdProp,
+  externalApplicantIdProp,
+  externalDocIdProp
+} = require('./constants')
+
+const hasApplicantLinks = typeforce.compile({
+  [applicantIdProp]: typeforce.String,
+  [externalApplicantIdProp]: typeforce.String
+})
 
 module.exports = function createChecksStore ({ db, reports }) {
   const checks = sub(db, 'c')
-  checks.byApplicantId = secondary(checks, 'applicantId')
+  checks.byApplicantId = secondary(checks, applicantIdProp)
+  checks.byExternalApplicantId = secondary(checks, externalApplicantIdProp)
 
-  promisify(checks)
+  setPromiseInterface(checks)
 
-  const putCheck = co(function* putCheck (applicantId, check) {
-    check.applicantId = applicantId
+  const create = co(function* create (check) {
+    typeforce(hasApplicantLinks, check)
     yield checks.promise.put(check.id, check)
     return check
   })
 
-  const putChecks = co(function* putChecks (check) {
+  const putChecks = co(function* putChecks (checks) {
+    typeforce(typeforce.arrayOf(hasApplicantLinks), checks)
+
     const neutered = checks.map(check => omit(check, ['reports']))
     const checksBatch = checks.map(check => {
       return { type: 'put', key: check.id, value: check }
@@ -93,7 +106,7 @@ module.exports = function createChecksStore ({ db, reports }) {
     list: listChecks,
     get: getCheck,
     update: update,
-    create: putCheck
+    create: create
   })
 
   // return {

@@ -3,27 +3,36 @@ const typeforce = require('typeforce')
 const request = require('superagent')
 const collect = Promise.promisify(require('stream-collector'))
 const secondary = require('level-secondary')
-const { Promise, co, sub, omit } = require('./utils')
+const deepExtend = require('deep-extend')
+const { Promise, co, sub, omit, setPromiseInterface, allSettled } = require('./utils')
 const types = require('./types')
+const {
+  applicantIdProp,
+  externalApplicantIdProp,
+  externalDocIdProp
+} = require('./constants')
 
-module.exports = function createApplicantsAPI ({ db, onfido, token }) {
+const docWithLinks = typeforce.compile({
+  [applicantIdProp]: typeforce.String,
+  [externalApplicantIdProp]: typeforce.String,
+  [externalDocIdProp]: typeforce.String
+})
+
+module.exports = function createApplicantsAPI ({ db, token }) {
   const applicants = sub(db, 'm')
-  const externalIdProp = 'externalId'
-  applicants.byExternalId = secondary(applicants, externalIdProp)
+  applicants.byExternalId = secondary(applicants, externalApplicantIdProp)
 
-  const docExternalIdProp = 'externalDocId'
   const docs = sub(db, 'd')
-  docs.byId = secondary(docs, 'id')
-  docs.byApplicantId = secondary(docs, 'applicantId')
-  docs.byApplicantExternalId = secondary(docs, externalIdProp)
-  docs.byExternalId = secondary(docs, docExternalIdProp)
+  docs.byApplicantId = secondary(docs, applicantIdProp)
+  docs.byExternalApplicantId = secondary(docs, externalApplicantIdProp)
+  docs.byExternalId = secondary(docs, externalDocIdProp)
 
-  promisify(applicants)
-  promisify(applicants.byExternalId)
-  promisify(docs)
+  setPromiseInterface(applicants)
+  setPromiseInterface(applicants.byExternalId)
+  setPromiseInterface(docs)
 
   const create = co(function* create (externalId, applicant) {
-    applicant[externalIdProp] = externalId
+    applicant[externalApplicantIdProp] = externalId
     return yield putApplicant(applicant)
   })
 
@@ -52,17 +61,49 @@ module.exports = function createApplicantsAPI ({ db, onfido, token }) {
     return applicants.promise.put(applicant.id, applicant)
   }
 
-  function putDoc (doc) {
-    return docs.promise.put(doc.id, doc)
+  function putDocs (documents) {
+    const arr = [].concat(documents)
+    typeforce(typeforce.arrayOf(docWithLinks), arr)
+
+    return docs.promise.batch(arr.map(doc => {
+      return { type: 'put', key: doc.id, value: doc }
+    }))
   }
 
+  const listDocuments = co(function* listDocuments (externalId) {
+    // const applicant = yield getApplicantById(externalId)
+    collect(docs.byExternalApplicantId.createReadStream({
+      keys: false,
+      start: externalId,
+      end: externalId
+    }))
+  })
+
+  const updateDocuments = co(function* updateDocuments (docs) {
+    const results = yield allSettled(docs.map(doc => docs.promise.get(doc.id)))
+    const updated = results.map((r, i) => {
+      if (r.value) {
+        return deepExtend(r.value, docs[i])
+      } else {
+        return docs[i]
+      }
+    })
+
+    return putDocs(updated)
+  })
+
   return Object.freeze({
-    externalIdProp,
+    externalApplicantIdProp,
     list,
-    byId: getApplicantById,
+    get: getApplicantByExternalId,
     byExternalId: getApplicantByExternalId,
-    create: create,
-    update: update
+    byId: getApplicantById,
+    create,
+    update,
+    listDocuments: listDocuments,
+    saveDocument: putDocs,
+    saveDocuments: putDocs,
+    updateDocuments: updateDocuments
   })
 }
 

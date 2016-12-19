@@ -9,75 +9,32 @@ const { Promise, co, sub, omit } = require('./utils')
 const types = require('./types')
 const BASE_URL = 'https://api.onfido.com/v2/webhooks'
 
-module.exports = function createHooksAPI ({ db, token, applicants, checks, reports }) {
-  db.promise = Promise.promisifyAll(db)
+module.exports = function createHooksAPI ({ api, store }) {
 
-  // const ee = new EventEmitter()
-  // return extend(ee, {
-  return {
-    get,
-    list,
-    register,
-    unregister,
-    handleEvent
-  }
+  const get = co(function* (hookId, opts={}) {
+    if (!opts.fetch) return store.get(hookId)
 
-  function putHooks (hooks) {
-    const batch = [].concat(hooks).map(hook => {
-      return { type: 'put', key: hook.id, value: hook }
-    })
-
-    yield db.promise.batch(batch)
-    return hooks
-  }
-
-  const get = co(function* get (hookId, fetch=false) {
-    if (fetch) {
-      const result = yield request
-        .get(`${BASE_URL}/${hookId}`)
-        .set('Authorization', 'Token token=' + token)
-        .send()
-
-      return putHooks(result)
-    }
-
-    return db.promise.get(hookId)
+    const hook = yield api.get(hookId)
+    return yield store.update(hook)
   })
 
-  const list = co(function* list (fetch=false) {
-    if (fetch) {
-      const result = yield request
-        .get(BASE_URL)
-        .set('Authorization', 'Token token=' + token)
-        .send()
+  const list = co(function* (opts={}) {
+    if (!opts.fetch) return store.list()
 
-      return yield putHooks(result)
-    }
-
-    return collect(db.promise.createReadStream({ keys: false }))
+    const hooks = yield api.list()
+    return yield store.update(hooks)
   })
 
-  const register = co(function* register ({ url, events=[] }) {
-    typeforce(typeforce.arrayOf(types.webhookEvent), events)
-
-    const opts = { url }
-    if (events.length) opts.events = events
-
-    const result = yield request
-      .post(BASE_URL)
-      .set('Authorization', 'Token token=' + token)
-      .send()
-
-    return yield putHooks(result)
+  const register = co(function* (opts) {
+    const hook = yield api.register(opts)
+    yield store.create(hook)
+    return hook
   })
 
-  const unregister = co(function* unregister (url) {
-    const result = yield request
-      .post(BASE_URL)
-      .set('Authorization', 'Token token=' + token)
-      .send({ url, enabled: false })
-
-    return yield putHooks(result)
+  const unregister = co(function* (opts) {
+    const hook = yield api.unregister(opts)
+    yield store.update(hook)
+    return hook
   })
 
   const handleEvent = co(function* handleEvent (req) {
@@ -128,4 +85,12 @@ module.exports = function createHooksAPI ({ db, token, applicants, checks, repor
       object: fullObject
     }
   })
+
+  return {
+    get,
+    list,
+    register,
+    unregister,
+    handleEvent
+  }
 }

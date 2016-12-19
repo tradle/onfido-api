@@ -4,12 +4,23 @@ const deepExtend = require('deep-extend')
 const collect = Promise.promisify(require('stream-collector'))
 const secondary = require('level-secondary')
 const { Promise, co, sub, omit } = require('./utils')
+const {
+  externalApplicantIdProp,
+  applicantIdProp,
+  checkIdProp
+} = require('./constants')
 const types = require('./types')
+const hasRequiredLinks = typeforce.compile({
+  [applicantIdProp]: typeforce.String,
+  [externalApplicantIdProp]: typeforce.String,
+  [checkIdProp]: typeforce.String
+})
 
 module.exports = function createReportsAPI ({ db, onfido, applicants, token }) {
   db = sub(db, 'r')
-  db.byApplicantId = secondary(db, 'applicantId')
-  db.byCheckId = secondary(db, 'checkId')
+  db.byApplicantId = secondary(db, applicantIdProp)
+  db.byExternalApplicantId = secondary(db, externalApplicantIdProp)
+  db.byCheckId = secondary(db, checkIdProp)
   promisify(db)
 
   const update = co(function* update (reports) {
@@ -22,15 +33,13 @@ module.exports = function createReportsAPI ({ db, onfido, applicants, token }) {
     return reports
   })
 
-  function create (reports) {
-    [].concat(reports).forEach(r => {
-      typeforce({
-        applicantId: typeforce.String,
-        [externalApplicantId]: typeforce.String,
-        checkId: typeforce.String
-      }, r)
-    })
+  function get (reportId) {
+    typeforce(typeforce.arrayOf(hasRequiredLinks), reports)
+    return db.promise.get(reportId)
+  }
 
+  function create (reports) {
+    typeforce(typeforce.arrayOf(hasRequiredLinks), reports)
     return save({ reports })
   }
 
@@ -40,9 +49,19 @@ module.exports = function createReportsAPI ({ db, onfido, applicants, token }) {
     }))
   }
 
-  function listReports ({ checkId, applicantId }, opts={}) {
-    const prop = checkId || applicantId
-    const index = checkId ? db.byCheckId : db.applicantId
+  function listReports ({ checkId, applicantId, externalApplicantId }, opts={}) {
+    let prop, index
+    if (checkId) {
+      prop = checkId
+      index = db.byCheckId
+    } else if (externalApplicantId) {
+      prop = externalApplicantId,
+      index = byExternalApplicantId
+    } else {
+      prop = applicantId,
+      index = byApplicantId
+    }
+
     return collect(index.createReadStream({
       start: prop,
       end: prop,
@@ -51,6 +70,7 @@ module.exports = function createReportsAPI ({ db, onfido, applicants, token }) {
   }
 
   return {
+    get: get,
     create: create,
     update: update,
     list: listReports

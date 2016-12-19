@@ -1,50 +1,47 @@
 
-const Onfido = require('onfido')
+const stores = require('./store')
+const apis = require('./api')
 const createApplicantsAPI = require('./applicants')
 const createChecksAPI = require('./checks')
 const createWebhooksAPI = require('./webhooks')
 const createReportTypeGroupsAPI = require('./reportTypeGroups')
 const { sub, Promise } = require('./utils')
-const defaultClient = Onfido.ApiClient.instance
-
-// Configure API key authorization: Token
-const Token = defaultClient.authentications['Token']
-Token.apiKey = "YOUR API KEY"
-// Uncomment the following line to set a prefix for the API key, e.g. "Token" (defaults to null)
-//Token.apiKeyPrefix['Authorization'] = "Token"
-
-const rawApi = new Onfido.DefaultApi()
-const onfido = Promise.promisifyAll(rawApi)
 
 module.exports = function ({ db, idProp }) {
   const applicantsDB = sub(db, 'a')
   const checksDB = sub(db, 'c')
+  const reportsDB = sub(db, 'r')
   const webhooksDB = sub(db, 'w')
 
-  const applicantsAPI = createApplicantsAPI({
-    db: applicantsDB,
-    onfido,
-    token,
-    idProp
+  const applicantParts = {
+    api: apis.applicants({ token }),
+    store: stores.applicants({ db: applicantsDB })
+  }
+
+  const applicants = createApplicantsAPI(applicantParts)
+
+  const checks = createChecksAPI({
+    api: apis.checks({ token }),
+    store: stores.checks({ db: checksDB }),
+    applicants: applicantParts
   })
 
-  const checksAPI = createChecksAPI({
-    db: checksDB,
-    applicants: applicantsAPI,
-    onfido,
-    token
-  })
+  const reports = {
+    api: apis.reports({ token }),
+    store: stores.reports({ db: reportsDB }),
+    applicants: applicantParts
+  }
 
-  const webhooksAPI = createWebhooksAPI({
-    db: webhooksDB,
-    onfido,
-    token
-  })
+  const webhooks = {
+    api: apis.webhooks({ token }),
+    store: stores.webhooks({ db: webhooksDB })
+  }
 
   return {
-    applicants: applicantsAPI,
-    checks: checksAPI,
-    webhooks: webhooksAPI,
-    reportTypeGroups: createReportTypeGroupsAPI({ onfido })
+    applicants,
+    checks,
+    reports,
+    webhooks,
+    // reportTypeGroups: createReportTypeGroupsAPI({ onfido })
   }
 }
