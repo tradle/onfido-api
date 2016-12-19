@@ -1,4 +1,6 @@
 
+const typeforce = require('typeforce')
+
 exports.side = typeforce.oneOf('front', 'back')
 
 exports.docType = typeforce.oneOf('passport', 'license')

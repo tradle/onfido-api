@@ -1,4 +1,5 @@
 
+const deepExtend = require('deep-extend')
 const { Promise, co, sub, omit, setPromiseInterface } = require('./utils')
 const {
   applicantIdProp,
@@ -13,32 +14,29 @@ module.exports = function ({ db, api, store }) {
     return yield store.create(externalApplicantId, applicant)
   })
 
-  const list = co(function* list (externalApplicantId, opts={}) {
+  const list = co(function* list (opts={}) {
     if (!opts.fetch) {
       return yield store.list()
     }
 
-    const fetched = yield checks.api.list({ applicantId: applicant.id, expandReports: true })
-    fetched.forEach(check => {
-      check._applicantId = applicant.id
-      check._externalApplicantId = externalApplicantId
-    })
-
-    return yield checks.store.update(fetched)
+    const fetched = yield api.list()
+    return yield store.update(fetched)
   })
 
   const get = co(function* get (externalApplicantId, opts={}) {
-    const applicant = yield store.get(externalApplicantId)
-    if (!opts.fetch) return applicant
+    const stored = yield store.get(externalApplicantId)
+    if (!opts.fetch) return stored
 
     const applicant = yield api.get(applicant.id)
-    return yield store.update(externalApplicantId, applicant)
+    deepExtend(stored, applicant)
+    return yield store.put(applicant)
   })
 
   const update = co(function* update (externalApplicantId, data) {
     const saved = yield store.get(externalApplicantId)
-    const applicant = yield api.get(applicant.id)
-    return yield store.update(externalApplicantId, applicant)
+    const applicant = yield api.update(applicant.id, data)
+    deepExtend(saved, applicant)
+    return yield store.put(applicant)
   })
 
   const uploadDocument = co(function* uploadDocument (externalApplicantId, doc) {
@@ -63,7 +61,16 @@ module.exports = function ({ db, api, store }) {
     return docs
   })
 
+  const uploadLivePhoto = co(function* uploadLivePhoto (externalApplicantId, photo) {
+    const applicant = yield store.get(externalApplicantId)
+    const result = yield api.uploadLivePhoto(applicant.id, photo)
+    return result
+    // return yield store.saveDocument(externalApplicantId, result)
+  })
+
   return {
+    api,
+    store,
     create,
     list,
     get,

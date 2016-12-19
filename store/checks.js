@@ -1,63 +1,92 @@
 
 const typeforce = require('typeforce')
 const request = require('superagent')
-const collect = Promise.promisify(require('stream-collector'))
-const secondary = require('level-secondary')
-const { Promise, co, sub, omit, setPromiseInterface } = require('./utils')
-const types = require('./types')
+const {
+  Promise,
+  co,
+  sub,
+  omit,
+  collect,
+  allSettledResults,
+  secondary
+} = require('../utils')
+const promisify = Promise.promisifyAll
+const types = require('../types')
 const {
   applicantIdProp,
   externalApplicantIdProp,
-  externalDocIdProp
-} = require('./constants')
+  externalDocIdProp,
+  checkIdProp
+} = require('../constants')
 
 const hasApplicantLinks = typeforce.compile({
   [applicantIdProp]: typeforce.String,
   [externalApplicantIdProp]: typeforce.String
 })
 
-module.exports = function createChecksStore ({ db, reports }) {
-  const checks = sub(db, 'c')
-  checks.byApplicantId = secondary(checks, applicantIdProp)
-  checks.byExternalApplicantId = secondary(checks, externalApplicantIdProp)
+module.exports = function createChecksStore (opts) {
+  typeforce({
+    db: typeforce.Object,
+    reports: typeforce.Object
+  }, opts)
 
-  setPromiseInterface(checks)
+  const { db, reports } = opts
+  const checksDB = sub(db, 'c')
+  checksDB.byApplicantId = secondary(checksDB, applicantIdProp)
+  checksDB.byExternalApplicantId = secondary(checksDB, externalApplicantIdProp)
+
+  promisify(checksDB)
 
   const create = co(function* create (check) {
-    typeforce(hasApplicantLinks, check)
-    yield checks.promise.put(check.id, check)
-    return check
+    const result = yield putChecks([check])
+    return result[0]
   })
 
   const putChecks = co(function* putChecks (checks) {
     typeforce(typeforce.arrayOf(hasApplicantLinks), checks)
 
-    const neutered = checks.map(check => omit(check, ['reports']))
-    const checksBatch = checks.map(check => {
-      return { type: 'put', key: check.id, value: check }
-    })
+    const checksBatch = checks
+      .map(check => omit(check, ['reports']))
+      .map(check => {
+        return { type: 'put', key: check.id, value: check }
+      })
 
-    yield checks.promise.batch(checksBatch)
-    // return stored value
-    return neutered
+    const reportObjs = checks.reduce(function (reports, check) {
+      if (!check.reports) return reports
+
+      check.reports.forEach(r => {
+        r[externalApplicantIdProp] = check[externalApplicantIdProp]
+        r[applicantIdProp] = check[applicantIdProp]
+        r[checkIdProp] = check.id
+      })
+
+      return reports.concat(check.reports)
+    }, [])
+
+    yield Promise.all([
+      checksDB.batchAsync(checksBatch),
+      reports.update(reportObjs)
+    ])
+
+    return checks
   })
 
   function listShallow (applicantId) {
-    const stream = checks.byApplicantId.createReadStream({
+    const stream = checksDB.byApplicantId.createReadStream({
       start: applicantId,
-      end: applicantId,
+      end: applicantId + '\xff',
       keys: false
     })
 
     return collect(stream)
   }
 
-  const listChecks = co(*function listChecks (applicantId, opts={}) {
+  const listChecks = co(function* listChecks (applicantId, opts={}) {
     const savedChecks = yield listShallow(applicantId)
     if (opts.values === false) return savedChecks
 
-    const reportSets = Promise.all(savedChecks.map(check => {
-      return reports.list({ checkId: data.id })
+    const reportSets = yield Promise.all(savedChecks.map(check => {
+      return reports.list({ checkId: check.id })
     }))
 
     savedChecks.forEach(function (check, i) {
@@ -68,16 +97,21 @@ module.exports = function createChecksStore ({ db, reports }) {
   })
 
   const getCheck = co(function* getCheck (checkId) {
-    const check = yield checks.promise.get(checkId)
-    check.reports = yield reports.list({ checkId: data.id })
+    const check = yield checksDB.getAsync(checkId)
+    check.reports = yield reports.list({ checkId: check.id })
     return check
   })
 
   const update = co(function* update (checks) {
     const arr = [].concat(checks)
-    const saved = yield Promise.all(arr.map(check => checks.promise.get(check.id)))
+    const saved = yield allSettledResults(arr.map(check => checksDB.getAsync(check.id)))
     arr.forEach(function (update, i) {
-      deepExtend(saved[i], update)
+      if (saved[i]) {
+        deepExtend(saved[i], update)
+      } else {
+        typeforce(hasApplicantLinks, update)
+        saved[i] = update
+      }
     })
 
     const result = yield putChecks(saved)
@@ -102,17 +136,10 @@ module.exports = function createChecksStore ({ db, reports }) {
   //   }
   // }
 
-  return clone(checkAPI, {
+  return {
     list: listChecks,
     get: getCheck,
     update: update,
     create: create
-  })
-
-  // return {
-  //   list: checkAPI,
-  //   get: getCheck,
-  //   update: update,
-  //   check: checkAPI
-  // }
+  }
 }

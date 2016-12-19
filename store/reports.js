@@ -1,22 +1,29 @@
 const typeforce = require('typeforce')
-const request = require('superagent')
 const deepExtend = require('deep-extend')
-const collect = Promise.promisify(require('stream-collector'))
-const secondary = require('level-secondary')
-const { Promise, co, sub, omit } = require('./utils')
+const {
+  Promise,
+  co,
+  sub,
+  omit,
+  collect,
+  allSettledResults,
+  secondary
+} = require('../utils')
+
+const promisify = Promise.promisifyAll
 const {
   externalApplicantIdProp,
   applicantIdProp,
   checkIdProp
-} = require('./constants')
-const types = require('./types')
+} = require('../constants')
+const types = require('../types')
 const hasRequiredLinks = typeforce.compile({
   [applicantIdProp]: typeforce.String,
   [externalApplicantIdProp]: typeforce.String,
   [checkIdProp]: typeforce.String
 })
 
-module.exports = function createReportsAPI ({ db, onfido, applicants, token }) {
+module.exports = function createReportsAPI ({ db, token }) {
   db = sub(db, 'r')
   db.byApplicantId = secondary(db, applicantIdProp)
   db.byExternalApplicantId = secondary(db, externalApplicantIdProp)
@@ -24,27 +31,33 @@ module.exports = function createReportsAPI ({ db, onfido, applicants, token }) {
   promisify(db)
 
   const update = co(function* update (reports) {
-    const arr = [].concat(reports)
-    const saved = yield Promise.all(arr.map(r => db.promise.get(r.id)))
-    yield save(arr.map(report => {
-      return deepExtend(saved, report)
-    }))
+    const updates = [].concat(reports)
+    const saved = yield allSettledResults(updates.map(r => db.getAsync(r.id)))
+    const updated = updates.map(report => {
+      if (saved) {
+        return deepExtend(saved, report)
+      } else {
+        typeforce(hasRequiredLinks, report)
+        return report
+      }
+    })
 
+    yield save(reports)
     return reports
   })
 
   function get (reportId) {
-    typeforce(typeforce.arrayOf(hasRequiredLinks), reports)
-    return db.promise.get(reportId)
+    return db.getAsync(reportId)
   }
 
   function create (reports) {
-    typeforce(typeforce.arrayOf(hasRequiredLinks), reports)
-    return save({ reports })
+    const arr = [].concat(reports)
+    typeforce(typeforce.arrayOf(hasRequiredLinks), arr)
+    return save(arr)
   }
 
   function save (reports) {
-    return db.promise.batch(reports.map(report => {
+    return db.batchAsync(reports.map(report => {
       return { type: 'put', key: report.id, value: report }
     }))
   }
@@ -55,16 +68,18 @@ module.exports = function createReportsAPI ({ db, onfido, applicants, token }) {
       prop = checkId
       index = db.byCheckId
     } else if (externalApplicantId) {
-      prop = externalApplicantId,
-      index = byExternalApplicantId
+      prop = externalApplicantId
+      index = db.byExternalApplicantId
     } else {
-      prop = applicantId,
-      index = byApplicantId
+      prop = applicantId
+      index = db.byApplicantId
     }
+
+    if (!prop) throw new Error('expected "checkId", "applicantId" or "externalApplicantId"')
 
     return collect(index.createReadStream({
       start: prop,
-      end: prop,
+      end: prop + '\xff',
       keys: opts.keys || false
     }))
   }
@@ -75,3 +90,4 @@ module.exports = function createReportsAPI ({ db, onfido, applicants, token }) {
     update: update,
     list: listReports
   }
+}

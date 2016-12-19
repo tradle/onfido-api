@@ -1,24 +1,13 @@
 
 const typeforce = require('typeforce')
-const collect = Promise.promisify(require('stream-collector'))
 const secondary = require('level-secondary')
 const debug = require('debug')('onfido:api:applicants')
-const { Promise, co, sub, omit, baseRequest } = require('./utils')
-const types = require('./types')
+const utils = require('../utils')
+const { Promise, co, sub, omit, baseRequest, collect, getter, errorFromResponse } = utils
+const types = require('../types')
 const BASE_URL = 'https://api.onfido.com/v2/applicants'
 
 module.exports = function createApplicantsAPI ({ db, token }) {
-  return Object.freeze({
-    get,
-    list,
-    create,
-    update,
-    // 'delete': deleteApplicant,
-    uploadDocument,
-    uploadLivePhoto,
-    applicant: applicantAPI
-  })
-
   const request = baseRequest(token)
   const create = co(function* create (applicantData) {
     typeforce({
@@ -28,33 +17,35 @@ module.exports = function createApplicantsAPI ({ db, token }) {
       // TODO: optional props
     }, applicantData)
 
-    const result = yield request
-      .post(BASE_URL)
-      .send(applicantData)
-
-    debug('created applicant', result)
-    return result
+    return utils.post({ token, url: BASE_URL, data: applicantData })
   })
 
   const update = co(function* update (applicantId, applicantData) {
-    const result = yield request
-      .post(`${BASE_URL}/${applicantId}`)
-      .send(applicantData)
-
-    debug('updated applicant', result)
-    return result
+    return utils.post({
+      token,
+      url: `${BASE_URL}/${applicantId}`,
+      data: applicantData
+    })
   })
 
-  function get (applicantId) {
-    return request.get(`${BASE_URL}/${applicantId}`)
-  }
+  const get = co(function* get (applicantId) {
+    return utils.get({
+      token,
+      url: `${BASE_URL}/${applicantId}`
+    })
+  })
 
   /**
    * Does not currently support pagination
    */
-  function list () {
-    return request.get(BASE_URL)
-  }
+  const list = co(function* () {
+    const { applicants } = yield utils.get({
+      token,
+      url: BASE_URL
+    })
+
+    return applicants
+  })
 
   const uploadDocument = co(function* uploadDocument (applicantId, doc) {
     let { file, type, side } = doc
@@ -71,11 +62,17 @@ module.exports = function createApplicantsAPI ({ db, token }) {
     }
 
     // const result = yield onfido.uploadDocument(applicant.id, doc)
-    return yield request
+    const res = yield request
       .post(`'https://api.onfido.com/v2/applicants/${applicantId}/documents`)
       .type('form')
       .field({ file, type, side })
-      .send()
+
+    const { ok, body } = res
+    if (!ok) {
+      throw errorFromResponse(res)
+    }
+
+    return body
   })
 
   const uploadLivePhoto = co(function* uploadLivePhoto (applicantId, photo) {
@@ -83,12 +80,20 @@ module.exports = function createApplicantsAPI ({ db, token }) {
       file: typeforce.String,
     }, photo)
 
-    return request
+    const res = yield request
       .post('https://api.onfido.com/v2/live_photos')
-      .send({
+      .type('form')
+      .field({
         applicant_id: applicantId,
         file: photo.file,
       })
+
+    const { ok, body } = res
+    if (!ok) {
+      throw errorFromResponse(res)
+    }
+
+    return body
   })
 
   function applicantAPI (applicantId) {
@@ -101,6 +106,17 @@ module.exports = function createApplicantsAPI ({ db, token }) {
       update: update.bind(null, applicantId)
     }
   }
+
+  return Object.freeze({
+    get,
+    list,
+    create,
+    update,
+    // 'delete': deleteApplicant,
+    uploadDocument,
+    uploadLivePhoto,
+    applicant: applicantAPI
+  })
 }
 
 function promisify (obj) {

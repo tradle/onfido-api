@@ -3,38 +3,38 @@ const crypto = require('crypto')
 const typeforce = require('typeforce')
 const request = require('superagent')
 const extend = require('xtend/mutable')
-const collect = Promise.promisify(require('stream-collector'))
+const { Promise, co, sub, omit, setPromiseInterface, allSettledResults, collect } = require('../utils')
+const promisify = Promise.promisifyAll
 const secondary = require('level-secondary')
-const { Promise, co, sub, omit, setPromiseInterface, allSettled } = require('./utils')
-const types = require('./types')
+const types = require('../types')
 
-module.exports = function createHooksAPI ({ db, token, applicants, checks, reports }) {
-  setPromiseInterface(db)
+module.exports = function createHooksStore ({ db }) {
+  promisify(db)
 
-  function putHooks (hooks) {
+  const putHooks = co(function* putHooks (hooks) {
     const batch = [].concat(hooks).map(hook => {
       return { type: 'put', key: hook.id, value: hook }
     })
 
-    yield db.promise.batch(batch)
+    yield db.batchAsync(batch)
     return hooks
-  }
+  })
 
-  const create = hook => db.promise.put(hook.id, hook)
-  const get = hookId => db.promise.get(hookId)
+  const create = hook => db.putAsync(hook.id, hook)
+  const get = hookId => db.getAsync(hookId)
 
   const list = co(function* list () {
-    return collect(db.promise.createReadStream({ keys: false }))
+    return collect(db.createReadStream({ keys: false }))
   })
 
   const update = co(function* update (hooks) {
-    const arr = [].concat(hooks)
-    const saved = allSettled(arr.map(get))
-    const updated = saved.map((r, i) => {
-      if (r.value) {
-        return deepExtend(r.value, arr[i])
+    const updates = [].concat(hooks)
+    const saved = allSettledResults(updates.map(get))
+    const updated = saved.map(hook => {
+      if (hook) {
+        return deepExtend(hook, updates[i])
       } else {
-        return arr[i]
+        return updates[i]
       }
     })
 

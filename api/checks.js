@@ -1,10 +1,9 @@
 
 const querystring = require('querystring')
 const typeforce = require('typeforce')
-const collect = Promise.promisify(require('stream-collector'))
 const secondary = require('level-secondary')
-const { Promise, co, sub, omit, baseRequest } = require('./utils')
-const types = require('./types')
+const { Promise, co, sub, omit, baseRequest, collect } = require('../utils')
+const types = require('../types')
 
 module.exports = function createChecksAPI ({ onfido, token }) {
   const request = baseRequest(token)
@@ -43,7 +42,7 @@ module.exports = function createChecksAPI ({ onfido, token }) {
       .send()
   })
 
-  const fetchChecks = co(function* fetchChecks ({ applicantId, expandReports ) {
+  const fetchChecks = co(function* fetchChecks ({ applicantId, expandReports }) {
     const query = {}
     if (expandReports) query.expand = 'reports'
     return request
@@ -72,6 +71,7 @@ module.exports = function createChecksAPI ({ onfido, token }) {
   // }
 
   return {
+    create: createCheck,
     createDocumentCheck: createDocumentCheck,
     createFaceCheck: createFaceCheck,
     list: fetchChecks,

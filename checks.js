@@ -1,15 +1,27 @@
 
 const { Promise, co, sub, omit, setPromiseInterface } = require('./utils')
+const {
+  applicantIdProp,
+  externalApplicantIdProp
+} = require('./constants')
 
 module.exports = function ({ db, api, store, applicants }) {
 
   const create = co(function* create (externalApplicantId, opts) {
     const applicant = yield applicants.store.byExternalId(externalApplicantId)
-    const check = yield api.create(applicant.id, opts)
-    check._applicantId = applicant.id
-    check._externalApplicantId = externalApplicantId
+    const check = yield api.createDocumentCheck(applicant.id)
+    check[applicantIdProp] = applicant.id
+    check[externalApplicantIdProp] = externalApplicantId
     return yield store.create(check)
   })
+
+  const createDocumentCheck = function (externalApplicantId) {
+    return create(externalApplicantId, { reports: ['document'] })
+  }
+
+  const createFaceCheck = function (externalApplicantId) {
+    return create(externalApplicantId, { reports: ['facial_similarity'] })
+  }
 
   const list = co(function* list (externalApplicantId, opts={}) {
     if (!opts.fetch) {
@@ -37,6 +49,8 @@ module.exports = function ({ db, api, store, applicants }) {
 
   return {
     create,
+    createDocumentCheck,
+    createFaceCheck,
     list,
     get
   }

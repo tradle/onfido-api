@@ -3,10 +3,9 @@ const crypto = require('crypto')
 const typeforce = require('typeforce')
 const request = require('superagent')
 const extend = require('xtend/mutable')
-const collect = Promise.promisify(require('stream-collector'))
 const secondary = require('level-secondary')
-const { Promise, co, sub, omit, baseRequest } = require('./utils')
-const types = require('./types')
+const { Promise, co, sub, omit, baseRequest, collect } = require('../utils')
+const types = require('../types')
 const BASE_URL = 'https://api.onfido.com/v2/webhooks'
 
 module.exports = function createHooksAPI ({ token }) {

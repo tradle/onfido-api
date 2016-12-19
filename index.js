@@ -7,7 +7,9 @@ const createWebhooksAPI = require('./webhooks')
 const createReportTypeGroupsAPI = require('./reportTypeGroups')
 const { sub, Promise } = require('./utils')
 
-module.exports = function ({ db, idProp }) {
+module.exports = function ({ db, token }) {
+  if (!token) throw new Error('expected "token"')
+
   const applicantsDB = sub(db, 'a')
   const checksDB = sub(db, 'c')
   const reportsDB = sub(db, 'r')
