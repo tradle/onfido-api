@@ -198,5 +198,21 @@
       "breakdown": {},
       "properties": {}
     }
+  ],
+  "documents": [
+    {
+      "_externalApplicantId": "billy",
+      "_applicantId": "b51cdc0e-8152-431a-9e74-014793f4a280",
+      "_externalDocId": "billy passport",
+      "id": "7568415-123123-123123",
+      "created_at": "2014-05-23 13:50:33Z",
+      "href": "/v2/applicants/1030303-123123-123123/documents/7568415-123123-123123",
+      "download_href": "/v2/applicants/1030303-123123-123123/documents/7568415-123123-123123/download",
+      "file_name": "localfile.png",
+      "file_type": "png",
+      "file_size": 282870,
+      "type": "passport",
+      "side": null
+    }
   ]
 }

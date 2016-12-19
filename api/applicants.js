@@ -3,12 +3,16 @@ const typeforce = require('typeforce')
 const secondary = require('level-secondary')
 const debug = require('debug')('onfido:api:applicants')
 const utils = require('../utils')
-const { Promise, co, sub, omit, baseRequest, collect, getter, errorFromResponse } = utils
+const { Promise, co, sub, omit, collect, poster, getter, authRequest, errorFromResponse } = utils
 const types = require('../types')
 const BASE_URL = 'https://api.onfido.com/v2/applicants'
 
-module.exports = function createApplicantsAPI ({ db, token }) {
-  const request = baseRequest(token)
+module.exports = function createApplicantsAPI ({ token }) {
+  typeforce(typeforce.String, token)
+
+  const getUrl = getter(token)
+  const post = poster(token)
+  const auth = authRequest(token)
   const create = co(function* create (applicantData) {
     typeforce({
       first_name: typeforce.String,
@@ -17,40 +21,32 @@ module.exports = function createApplicantsAPI ({ db, token }) {
       // TODO: optional props
     }, applicantData)
 
-    return utils.post({ token, url: BASE_URL, data: applicantData })
+    return post({ url: BASE_URL, data: applicantData })
   })
 
   const update = co(function* update (applicantId, applicantData) {
-    return utils.post({
-      token,
+    return post({
       url: `${BASE_URL}/${applicantId}`,
       data: applicantData
     })
   })
 
   const get = co(function* get (applicantId) {
-    return utils.get({
-      token,
-      url: `${BASE_URL}/${applicantId}`
-    })
+    return getUrl(`${BASE_URL}/${applicantId}`)
   })
 
   /**
    * Does not currently support pagination
    */
   const list = co(function* () {
-    const { applicants } = yield utils.get({
-      token,
-      url: BASE_URL
-    })
-
+    const { applicants } = yield getUrl(BASE_URL)
     return applicants
   })
 
   const uploadDocument = co(function* uploadDocument (applicantId, doc) {
     let { file, type, side } = doc
     typeforce({
-      file: typeforce.String,
+      file: typeforce.Buffer,
       type: types.docType,
       side: typeforce.maybe(types.side)
     }, doc)
@@ -62,38 +58,41 @@ module.exports = function createApplicantsAPI ({ db, token }) {
     }
 
     // const result = yield onfido.uploadDocument(applicant.id, doc)
-    const res = yield request
-      .post(`'https://api.onfido.com/v2/applicants/${applicantId}/documents`)
-      .type('form')
-      .field({ file, type, side })
+    const data = { type }
+    if (side) data.side = side
 
-    const { ok, body } = res
-    if (!ok) {
-      throw errorFromResponse(res)
+    const req = auth
+      .post(`https://api.onfido.com/v2/applicants/${applicantId}/documents`)
+      .send(data)
+      .attach('file', file, type)
+
+    try {
+      var { ok, body } = yield req
+      return body
+    } catch (err) {
+      throw errorFromResponse(err.response)
     }
-
-    return body
   })
 
   const uploadLivePhoto = co(function* uploadLivePhoto (applicantId, photo) {
     typeforce({
-      file: typeforce.String,
+      file: typeforce.Buffer,
     }, photo)
 
-    const res = yield request
+    const { file } = photo
+    const req = auth
       .post('https://api.onfido.com/v2/live_photos')
-      .type('form')
-      .field({
-        applicant_id: applicantId,
-        file: photo.file,
+      .send({
+        applicant_id: applicantId
       })
+      .attach('file', file, 'selfie')
 
-    const { ok, body } = res
-    if (!ok) {
-      throw errorFromResponse(res)
+    try {
+      var { ok, body } = yield req
+      return body
+    } catch (err) {
+      throw errorFromResponse(err.response)
     }
-
-    return body
   })
 
   function applicantAPI (applicantId) {

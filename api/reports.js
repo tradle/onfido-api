@@ -1,29 +1,49 @@
 const typeforce = require('typeforce')
 const deepExtend = require('deep-extend')
-const secondary = require('level-secondary')
-const { Promise, co, baseRequest } = require('../utils')
+const { Promise, co, get, getter } = require('../utils')
 const types = require('../types')
 
-module.exports = function createReportsAPI ({ db, token }) {
-  const request = baseRequest(token)
-  const get = co(function* get ({ checkId, reportId }) {
-    return yield request
-      .get(`https://api.onfido.com/v2/checks/${checkId}/reports/${reportId}`)
+module.exports = function createReportsAPI ({ token }) {
+  typeforce(typeforce.String, token)
+
+  const getUrl = getter(token)
+  const get = co(function* get (opts) {
+    typeforce({
+      checkId: typeforce.String,
+      reportId: typeforce.String
+    }, opts)
+
+    const { checkId, reportId } = opts
+    return yield getUrl(`https://api.onfido.com/v2/checks/${checkId}/reports/${reportId}`)
   })
 
-  const list = co(function* list ({ checkId }) {
-    return yield request
-      .get(`https://api.onfido.com/v2/checks/${checkId}/reports`)
+  const list = co(function* list (opts) {
+    typeforce({
+      checkId: typeforce.String
+    }, opts)
+
+    const { checkId } = opts
+    return yield getUrl(`https://api.onfido.com/v2/checks/${checkId}/reports`)
   })
 
-  const resume = co(function* resume ({ checkId, reportId }) {
-    return yield request
-      .get(`https://api.onfido.com/v2/checks/${checkId}/reports/${reportId}/resume`)
+  const resume = co(function* resume (opts) {
+    typeforce({
+      checkId: typeforce.String,
+      reportId: typeforce.String
+    }, opts)
+
+    const { checkId, reportId } = opts
+    return yield getUrl(`https://api.onfido.com/v2/checks/${checkId}/reports/${reportId}/resume`)
   })
 
-  const cancel = co(function* cancel ({ checkId, reportId }) {
-    return yield request
-      .get(`https://api.onfido.com/v2/checks/${checkId}/reports/${reportId}/cancel`)
+  const cancel = co(function* cancel (opts) {
+    typeforce({
+      checkId: typeforce.String,
+      reportId: typeforce.String
+    }, opts)
+
+    const { checkId, reportId } = opts
+    return yield getUrl(`https://api.onfido.com/v2/checks/${checkId}/reports/${reportId}/cancel`)
   })
 
   return {

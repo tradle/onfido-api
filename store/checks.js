@@ -8,7 +8,8 @@ const {
   omit,
   collect,
   allSettledResults,
-  secondary
+  secondary,
+  deepExtend
 } = require('../utils')
 const promisify = Promise.promisifyAll
 const types = require('../types')
@@ -37,9 +38,9 @@ module.exports = function createChecksStore (opts) {
 
   promisify(checksDB)
 
-  const create = co(function* create (check) {
-    const result = yield putChecks([check])
-    return result[0]
+  const create = co(function* create (checks) {
+    const result = yield putChecks([].concat(checks))
+    return Array.isArray(checks) ? result : result[0]
   })
 
   const putChecks = co(function* putChecks (checks) {

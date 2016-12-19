@@ -2,12 +2,14 @@
 const querystring = require('querystring')
 const typeforce = require('typeforce')
 const secondary = require('level-secondary')
-const { Promise, co, sub, omit, baseRequest, collect } = require('../utils')
+const utils = require('../utils')
+const { Promise, co, sub, omit, authRequest, collect, getter } = utils
 const types = require('../types')
 
-module.exports = function createChecksAPI ({ onfido, token }) {
-  const request = baseRequest(token)
+module.exports = function createChecksAPI ({ token }) {
+  typeforce(typeforce.String, token)
 
+  const getUrl = getter(token)
   const createDocumentCheck = function createDocumentCheck (applicantId) {
     return createCheck(applicantId, { reports: ['document'] })
   }
@@ -29,25 +31,21 @@ module.exports = function createChecksAPI ({ onfido, token }) {
     // typeforce(typeforce.arrayOf(typeforce.oneOf(['document', 'face_comparison'])), reports)
 
     opts.type = 'express'
-    return request
-      .post(`https://api.onfido.com/v2/applicants/${applicantId}/checks`)
-      .send(opts)
+    return utils.post({
+      token,
+      url: `https://api.onfido.com/v2/applicants/${applicantId}/checks`,
+      data: opts
+    })
   })
 
   const fetchCheck = co(function* fetchCheck ({ applicantId, checkId, expandReports }) {
-    const query = {}
-    if (expandReports) query.expand = 'reports'
-    return request
-      .post(`https://api.onfido.com/v2/applicants/${applicantId}/checks/${checkId}?${querystring.stringify(query)}`)
-      .send()
+    const qs = expandReports ? '?expand=reports' : ''
+    return getUrl(`https://api.onfido.com/v2/applicants/${applicantId}/checks/${checkId}${qs}`)
   })
 
   const fetchChecks = co(function* fetchChecks ({ applicantId, expandReports }) {
-    const query = {}
-    if (expandReports) query.expand = 'reports'
-    return request
-      .post(`https://api.onfido.com/v2/applicants/${applicantId}/checks??${querystring.stringify(query)}`)
-      .send()
+    const qs = expandReports ? '?expand=reports' : ''
+    return getUrl(`https://api.onfido.com/v2/applicants/${applicantId}/checks${qs}`)
   })
 
   // function checkAPI (checkId) {

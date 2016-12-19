@@ -1,14 +1,20 @@
 
+const typeforce = require('typeforce')
 const request = require('superagent')
 const Sublevel = require('level-sublevel')
 const secondary = require('level-secondary')
 // const subdown = require('subleveldown')
 const Promise = require('bluebird')
 const omit = require('object.omit')
+const pick = require('object.pick')
 const co = Promise.coroutine
 
 exports.Promise = Promise
 exports.co = co
+
+exports.extend = require('xtend/mutable')
+exports.shallowClone = require('xtend')
+exports.deepExtend = require('deep-extend')
 
 exports.promisesub = function promisesub (db, prefix) {
   return Promise.promisifyAll(exports.sub(db, prefix))
@@ -19,16 +25,18 @@ exports.sub = function sub (db, prefix) {
 }
 
 exports.omit = omit
+exports.pick = pick
 
 exports.promisify = function promisify (obj) {
   obj.promise = Promise.promisifyAll(obj, {})
 }
 
-exports.baseRequest = function baseRequest (token) {
+exports.authRequest = function authRequest (token) {
   const authenticatedRequest = {}
   ;['get', 'post'].forEach(method => {
     authenticatedRequest[method] = function (url) {
       const req = request[method](url)
+        .set('Accept', 'application/json')
         .set('Authorization', 'Token token=' + token)
 
       if (method === 'post') req.type('form')
@@ -62,9 +70,19 @@ function errorFromResponse (res) {
 
 exports.errorFromResponse = errorFromResponse
 
-// exports.getter = function (opts) {
-//   return () => exports.get(opts)
-// }
+exports.getter = function (token) {
+  typeforce(typeforce.String, token)
+  return function (url) {
+    return exports.get({ url, token })
+  }
+}
+
+exports.poster = function (token) {
+  typeforce(typeforce.String, token)
+  return function ({ url, data }) {
+    return exports.post({ url, data, token })
+  }
+}
 
 exports.get = function ({ url, token }) {
   const req = request

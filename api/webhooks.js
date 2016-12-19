@@ -4,22 +4,21 @@ const typeforce = require('typeforce')
 const request = require('superagent')
 const extend = require('xtend/mutable')
 const secondary = require('level-secondary')
-const { Promise, co, sub, omit, baseRequest, collect } = require('../utils')
+const { Promise, co, sub, omit, getter, authRequest, collect } = require('../utils')
 const types = require('../types')
 const BASE_URL = 'https://api.onfido.com/v2/webhooks'
 
 module.exports = function createHooksAPI ({ token }) {
-  const request = baseRequest(token)
+  typeforce(typeforce.String, token)
+
+  const getUrl = getter(token)
+  const auth = authRequest(token)
   const get = co(function* get (hookId, fetch=false) {
-    return yield request
-      .get(`${BASE_URL}/${hookId}`)
-      .send()
+    return getUrl(`${BASE_URL}/${hookId}`)
   })
 
   const list = co(function* list (fetch=false) {
-    return yield request
-      .get(BASE_URL)
-      .send()
+    return getUrl(BASE_URL)
   })
 
   const register = co(function* register ({ url, events=[] }) {
@@ -28,13 +27,13 @@ module.exports = function createHooksAPI ({ token }) {
     const opts = { url }
     if (events.length) opts.events = events
 
-    return yield request
+    return yield auth
       .post(BASE_URL)
       .send()
   })
 
   const unregister = co(function* unregister (url) {
-    return yield request
+    return yield auth
       .post(BASE_URL)
       .send({ url, enabled: false })
   })

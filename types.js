@@ -1,11 +1,11 @@
 
 const typeforce = require('typeforce')
 
-exports.side = typeforce.oneOf('front', 'back')
+exports.side = oneOf('front', 'back')
 
-exports.docType = typeforce.oneOf('passport', 'license')
+exports.docType = oneOf('passport', 'license')
 
-exports.webhookEvent = typeforce.oneOf(
+exports.webhookEvent = oneOf(
   'report.completed',
   'report.withdrawn',
   'check.completed',
@@ -14,4 +14,10 @@ exports.webhookEvent = typeforce.oneOf(
   'check.form_completed'
 )
 
-exports.docFileType = typeforce.oneOf('png', 'jpg', 'jpeg', 'pdf')
+exports.docFileType = oneOf('png', 'jpg', 'jpeg', 'pdf')
+
+function oneOf (values) {
+  return function (val) {
+    return values.includes(val)
+  }
+}
