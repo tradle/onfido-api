@@ -76,7 +76,7 @@ module.exports = function createApplicantsAPI ({ token }) {
 
   const uploadLivePhoto = co(function* uploadLivePhoto (applicantId, photo) {
     typeforce({
-      file: typeforce.Buffer,
+      file: typeforce.Buffer
     }, photo)
 
     const { file } = photo
@@ -88,7 +88,16 @@ module.exports = function createApplicantsAPI ({ token }) {
       .attach('file', file, 'selfie')
 
     try {
-      var { ok, body } = yield req
+      const { ok, body } = yield req
+      return body
+    } catch (err) {
+      throw errorFromResponse(err.response)
+    }
+  })
+
+  const deleteApplicant = co(function* deleteApplicant (applicantId) {
+    try {
+      const { ok, body } = yield auth.delete(`https://api.onfido.com/v2/applicants/${applicantId}`)
       return body
     } catch (err) {
       throw errorFromResponse(err.response)
@@ -111,7 +120,7 @@ module.exports = function createApplicantsAPI ({ token }) {
     list,
     create,
     update,
-    // 'delete': deleteApplicant,
+    'delete': deleteApplicant,
     uploadDocument,
     uploadLivePhoto,
     applicant: applicantAPI

@@ -4,8 +4,9 @@ const memdb = require('memdb')
 const mock = require('superagent-mocker')(require('superagent'))
 const { Promise, co, omit, pick, shallowClone } = require('../utils')
 const { applicantIdProp, externalApplicantIdProp, checkIdProp } = require('../constants')
+const createClient = require('../')
 const stores = require('../store')
-const apis= require('../api')
+const apis = require('../api')
 const fixtures = require('./fixtures')
 sortById(fixtures.applicants)
 sortById(fixtures.checks)
@@ -394,8 +395,41 @@ test('applicant api', co(function* (t) {
   t.end()
 }))
 
+// test.only('end to end', co(function* (t) {
+//   const { applicants, checks, reports } = createClient({
+//     db: memdb(),
+//     token: 'something'
+//   })
+
+//   const [applicant] = fixtures.applicants
+//   mock.post('https://api.onfido.com/v2/applicants', req => {
+//     return {
+//       ok: true,
+//       body: neuter(applicant)
+//     }
+//   })
+
+//   const applicant = yield applicants.create('billy', {
+//     first_name: 'billy',
+//     last_name: 'flynn',
+//     email: 'billyflynn@flynns.farm'
+//   })
+
+//   const stored = yield applicants.get('billy')
+//   t.same(stored, applicant)
+// }))
+
 function sortById (itemsWithIds) {
   return itemsWithIds.sort(function (a, b) {
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
+}
+
+function neuter (obj) {
+  const copy = shallowClone(obj)
+  delete copy[externalApplicantIdProp]
+  delete copy[applicantIdProp]
+  delete copy[externalDocIdProp]
+  delete copy[checkIdProp]
+  return copy
 }

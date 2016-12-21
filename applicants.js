@@ -11,7 +11,8 @@ module.exports = function ({ db, api, store }) {
 
   const create = co(function* create (externalApplicantId, opts) {
     const applicant = yield api.create(opts)
-    return yield store.create(externalApplicantId, applicant)
+    applicant[externalApplicantIdProp] = externalApplicantId
+    return yield store.create(applicant)
   })
 
   const list = co(function* list (opts={}) {

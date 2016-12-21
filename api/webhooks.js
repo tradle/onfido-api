@@ -38,10 +38,43 @@ module.exports = function createHooksAPI ({ token }) {
       .send({ url, enabled: false })
   })
 
+  const handleEvent = co(function* handleEvent (req, res) {
+    // report  report.completed
+    // report  report.withdrawn
+    // check check.started
+    // check check.completed
+    // check check.form_opened
+    // check check.form_completed
+    return yield new Promise(function (resolve, reject) {
+      let body = ''
+      const hash = req.headers['X-Signature']
+      const hmac = crypto.createHmac('sha1', token)
+      req.on('data', function (data) {
+        body += data
+        hmac.update(data)
+      })
+
+      req.on('end', function () {
+        if (hmac.digest('hex') !== hash) {
+          return reject(new Error('received invalid HMAC digest'))
+        }
+      })
+
+      try {
+        body = JSON.parse(body)
+      } catch (err) {
+        return reject(err)
+      }
+
+      resolve(body)
+    })
+  })
+
   return {
     get,
     list,
     register,
-    unregister
+    unregister,
+    handleEvent
   }
 }

@@ -4,6 +4,7 @@ const apis = require('./api')
 const createApplicantsAPI = require('./applicants')
 const createChecksAPI = require('./checks')
 const createWebhooksAPI = require('./webhooks')
+const createReportsAPI = require('./reports')
 const createReportTypeGroupsAPI = require('./reportTypeGroups')
 const { sub, Promise } = require('./utils')
 
@@ -15,35 +16,38 @@ module.exports = function ({ db, token }) {
   const reportsDB = sub(db, 'r')
   const webhooksDB = sub(db, 'w')
 
-  const applicantParts = {
+  const applicantComponents = {
     api: apis.applicants({ token }),
     store: stores.applicants({ db: applicantsDB })
   }
 
-  const applicants = createApplicantsAPI(applicantParts)
+  const applicants = createApplicantsAPI(applicantComponents)
+
+  const reportComponents = {
+    api: apis.reports({ token }),
+    store: stores.reports({ db: reportsDB }),
+    applicants: applicantComponents
+  }
+
+  const reports = createReportsAPI(reportComponents)
 
   const checks = createChecksAPI({
     api: apis.checks({ token }),
-    store: stores.checks({ db: checksDB }),
-    applicants: applicantParts
+    store: stores.checks({ db: checksDB, reports: reportComponents.store }),
+    applicants: applicantComponents
   })
 
-  const reports = {
-    api: apis.reports({ token }),
-    store: stores.reports({ db: reportsDB }),
-    applicants: applicantParts
-  }
-
-  const webhooks = {
+  const webhooks = createWebhooksAPI({
     api: apis.webhooks({ token }),
     store: stores.webhooks({ db: webhooksDB })
-  }
+  })
 
+  const reportTypeGroups = createReportTypeGroupsAPI({ token })
   return {
     applicants,
     checks,
     reports,
     webhooks,
-    // reportTypeGroups: createReportTypeGroupsAPI({ onfido })
+    reportTypeGroups
   }
 }

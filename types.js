@@ -3,7 +3,7 @@ const typeforce = require('typeforce')
 
 exports.side = oneOf('front', 'back')
 
-exports.docType = oneOf('passport', 'license')
+exports.docType = oneOf('passport', 'driving_license', 'national_identity_card', 'tax_id', 'voter_id', 'residence_permit')
 
 exports.webhookEvent = oneOf(
   'report.completed',
