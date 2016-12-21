@@ -2,126 +2,21 @@
 const test = require('tape')
 const memdb = require('memdb')
 const mock = require('superagent-mocker')(require('superagent'))
-const { Promise, co, omit, pick, shallowClone } = require('../utils')
-const { applicantIdProp, externalApplicantIdProp, checkIdProp } = require('../constants')
-const createClient = require('../')
-const stores = require('../store')
-const apis = require('../api')
+const { Promise, co, omit, pick, shallowClone } = require('../lib/utils')
+const apis = require('../')
 const fixtures = require('./fixtures')
 sortById(fixtures.applicants)
 sortById(fixtures.checks)
 fixtures.checks.forEach(check => sortById(check.reports))
 sortById(fixtures.reports)
 
-test('report store', co(function* (t) {
-  const db = memdb()
-  const store = stores.reports({ db })
-
-  yield Promise.all(fixtures.reports.map(store.create))
-  const [report] = fixtures.reports
-  const saved = yield store.get(report.id)
-  t.same(saved, report)
-
-  // TODO: improve fixtures to have different reports from different checks from different applicants
-  let all = yield store.list({ checkId: report[checkIdProp] })
-  t.same(all, fixtures.reports)
-
-  all = yield store.list({ applicantId: report[applicantIdProp] })
-  t.same(all, fixtures.reports)
-
-  all = yield store.list({ externalApplicantId: report[externalApplicantIdProp] })
-  t.same(all, fixtures.reports)
-
-  const updates = fixtures.reports.map(r => {
-    return shallowClone(r, { status: 'completed' })
-  })
-
-  yield store.update(updates)
-  all = yield store.list({ externalApplicantId: report[externalApplicantIdProp] })
-  t.ok(all.every(r => r.status === 'completed'))
-
-  t.end()
-}))
-
-test('check store', co(function* (t) {
-  const db = memdb()
-  const reports = stores.reports({ db })
-  const checks = stores.checks({ db, reports })
-
-  const [check] = fixtures.checks
-  const applicantId = check[applicantIdProp]
-
-  yield checks.create(fixtures.checks)
-  const saved = yield checks.get(check.id)
-  sortById(saved.reports)
-  t.same(saved, check)
-
-  let all = yield checks.list(applicantId)
-  t.same(all, fixtures.checks.filter(c => c[applicantIdProp] === applicantId))
-
-  const updates = fixtures.checks.map(c => {
-    return shallowClone(c, {
-      reports: c.reports.map(r => {
-        return shallowClone(r, { status: 'completed' })
-      })
-    })
-  })
-
-  yield checks.update(updates)
-  all = yield checks.list(applicantId)
-  t.ok(all.every(c => c.reports.every(r => r.status === 'completed')))
-
-  t.end()
-}))
-
-test('applicant store', co(function* (t) {
-  const db = memdb()
-  const store = stores.applicants({ db })
-
-  yield Promise.all(fixtures.applicants.map(store.create))
-
-  const [first] = fixtures.applicants
-  const saved = yield store.get(first[externalApplicantIdProp])
-  t.same(saved, first)
-
-  let all = yield store.list()
-  sortById(all)
-
-  t.same(all, fixtures.applicants)
-
-  const updates = fixtures.applicants.map(a => {
-    return shallowClone(a, { first_name: 'doofus' })
-  })
-
-  yield store.update(updates)
-  all = yield store.list()
-  t.ok(all.every(a => a.first_name === 'doofus'))
-
-  t.end()
-}))
-
-test.skip('webhook store', co(function* (t) {
-  const db = memdb()
-  const webhooks = stores.webhooks({ db })
-
-  yield Promise.all(fixtures.webhooks.map(webhooks.create))
-
-  const [first] = fixtures.webhooks
-  const saved = yield webhooks.get(first.id)
-  t.same(saved, first)
-
-  const all = yield webhooks.list()
-  sortById(all)
-
-  t.same(all, fixtures.webhooks)
-  t.end()
-}))
-
 test('report api', co(function* (t) {
   const token = 'something'
-  const [report] = fixtures.reports
+  const [check] = fixtures.checks
+  const [report] = check.reports
+  // const reports = check.reports
   const api = apis.reports({ token })
-  let params = { reportId: report.id, checkId: report[checkIdProp] }
+  let params = { reportId: report.id, checkId: check.id }
   mock.get('https://api.onfido.com/v2/checks/:checkId/reports/:reportId', req => {
     t.same(req.params, params)
     t.same(req.headers, {
@@ -140,7 +35,7 @@ test('report api', co(function* (t) {
   let result = yield api.get(params)
   t.same(result, report)
 
-  params = { checkId: report[checkIdProp] }
+  params = { checkId: check.id }
   mock.get('https://api.onfido.com/v2/checks/:checkId/reports', req => {
     t.same(req.params, params)
     t.same(req.headers, {
@@ -153,13 +48,13 @@ test('report api', co(function* (t) {
     return {
       ok: true,
       body: {
-        reports: fixtures.reports
+        reports: check.reports
       }
     }
   })
 
   result = yield api.list(params)
-  t.same(result.reports, fixtures.reports)
+  t.same(result.reports, check.reports)
   t.end()
 }))
 
@@ -167,7 +62,7 @@ test('check api', co(function* (t) {
   const token = 'something'
   const [check] = fixtures.checks
   const api = apis.checks({ token })
-  const applicantId = check[applicantIdProp]
+  const applicantId = check.href.match(/applicants\/(.*?)\/checks/)[1]
   const checkId = check.id
 
   // get
@@ -256,8 +151,7 @@ test('check api', co(function* (t) {
 
 test('applicant api', co(function* (t) {
   const token = 'something'
-  const neutered = fixtures.applicants.map(applicant => omit(applicant, [externalApplicantIdProp]))
-  const applicant = neutered.find(applicant => applicant.email != null)
+  const applicant = fixtures.applicants.find(applicant => applicant.email != null)
   const api = apis.applicants({ token })
   const applicantId = applicant.id
 
@@ -293,13 +187,13 @@ test('applicant api', co(function* (t) {
     return {
       ok: true,
       body: {
-        applicants: neutered
+        applicants: fixtures.applicants
       }
     }
   })
 
   result = yield api.list()
-  t.same(result, neutered)
+  t.same(result, fixtures.applicants)
 
   // create
   let reqBody = pick(applicant, ['first_name', 'last_name', 'email'])
@@ -427,9 +321,9 @@ function sortById (itemsWithIds) {
 
 function neuter (obj) {
   const copy = shallowClone(obj)
-  delete copy[externalApplicantIdProp]
-  delete copy[applicantIdProp]
-  delete copy[externalDocIdProp]
-  delete copy[checkIdProp]
+  // delete copy[externalApplicantIdProp]
+  // delete copy[applicantIdProp]
+  // delete copy[externalDocIdProp]
+  // delete copy[checkIdProp]
   return copy
 }
