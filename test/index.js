@@ -1,18 +1,25 @@
 
 const test = require('tape')
-const memdb = require('memdb')
 const mock = require('superagent-mocker')(require('superagent'))
 const { Promise, co, omit, pick, shallowClone } = require('../lib/utils')
 const apis = require('../')
-const fixtures = require('./fixtures')
-sortById(fixtures.applicants)
-sortById(fixtures.checks)
-fixtures.checks.forEach(check => sortById(check.reports))
-sortById(fixtures.reports)
+const fixtures = {
+  applicants: require('./fixtures/applicants'),
+  checks: require('./fixtures/checks'),
+  documents: require('./fixtures/documents'),
+  documentImages: require('./fixtures/document-images')
+}
+
+// const fixtures = require('./fixtures')
+// sortById(fixtures.applicants)
+// sortById(fixtures.checks)
+// fixtures.checks.forEach(check => sortById(check.reports))
+// sortById(fixtures.reports)
 
 test('report api', co(function* (t) {
   const token = 'something'
-  const [check] = fixtures.checks
+  const applicant = fixtures.applicants[0]
+  const [check] = fixtures.checks[applicant.id]
   const [report] = check.reports
   // const reports = check.reports
   const api = apis.reports({ token })
@@ -60,7 +67,8 @@ test('report api', co(function* (t) {
 
 test('check api', co(function* (t) {
   const token = 'something'
-  const [check] = fixtures.checks
+  const applicant = fixtures.applicants[0]
+  const [check] = fixtures.checks[applicant.id]
   const api = apis.checks({ token })
   const applicantId = check.href.match(/applicants\/(.*?)\/checks/)[1]
   const checkId = check.id
@@ -110,11 +118,10 @@ test('check api', co(function* (t) {
     t.same(req.params, { applicantId })
     t.same(req.headers, {
       accept: 'application/json',
-      authorization: `Token token=${token}`,
-      'content-type': 'application/x-www-form-urlencoded'
+      authorization: `Token token=${token}`
     })
 
-    t.same(req.body, { reports: [ 'document' ], type: 'express' })
+    t.same(req.body, { reports: [ { name: 'document' } ], type: 'express' })
     return {
       ok: true,
       body: check
@@ -129,11 +136,10 @@ test('check api', co(function* (t) {
     t.same(req.params, { applicantId })
     t.same(req.headers, {
       accept: 'application/json',
-      authorization: `Token token=${token}`,
-      'content-type': 'application/x-www-form-urlencoded'
+      authorization: `Token token=${token}`
     })
 
-    t.same(req.body, { reports: [ 'facial_similarity' ], type: 'express' })
+    t.same(req.body, { reports: [ { name: 'facial_similarity' } ], type: 'express' })
     return {
       ok: true,
       body: check
@@ -151,7 +157,8 @@ test('check api', co(function* (t) {
 
 test('applicant api', co(function* (t) {
   const token = 'something'
-  const applicant = fixtures.applicants.find(applicant => applicant.email != null)
+  const applicant = fixtures.applicants[0]
+  const [check] = fixtures.checks[applicant.id]
   const api = apis.applicants({ token })
   const applicantId = applicant.id
 
@@ -201,8 +208,7 @@ test('applicant api', co(function* (t) {
     t.same(req.params, {})
     t.same(req.headers, {
       accept: 'application/json',
-      authorization: `Token token=${token}`,
-      'content-type': 'application/x-www-form-urlencoded'
+      authorization: `Token token=${token}`
     })
 
     t.same(req.body, reqBody)
@@ -223,8 +229,7 @@ test('applicant api', co(function* (t) {
     t.same(req.params, { applicantId: applicant.id })
     t.same(req.headers, {
       accept: 'application/json',
-      authorization: `Token token=${token}`,
-      'content-type': 'application/x-www-form-urlencoded'
+      authorization: `Token token=${token}`
     })
 
     t.same(req.body, reqBody)
@@ -239,7 +244,7 @@ test('applicant api', co(function* (t) {
   t.same(result, updated)
 
   // upload document
-  const [doc] = fixtures.documents
+  const [doc] = fixtures.documents[applicant.id]
   mock.post('https://api.onfido.com/v2/applicants/:applicantId/documents', req => {
     t.same(req.params, { applicantId: applicant.id })
     t.same(req.headers, {
@@ -248,7 +253,6 @@ test('applicant api', co(function* (t) {
       'content-type': 'application/x-www-form-urlencoded'
     })
 
-    t.same(req.body, { type: 'passport' })
     t.same(req.query, {})
     return {
       ok: true,
@@ -258,13 +262,13 @@ test('applicant api', co(function* (t) {
 
   result = yield api.uploadDocument(applicant.id, {
     file: new Buffer('some image'),
-    type: 'passport'
+    filename: doc.file_name,
+    type: 'driving_licence'
   })
 
   t.same(result, doc)
 
   // upload live photo
-  const [photo] = fixtures.documents
   mock.post('https://api.onfido.com/v2/live_photos', req => {
     t.same(req.params, {})
     t.same(req.headers, {
@@ -273,7 +277,6 @@ test('applicant api', co(function* (t) {
       'content-type': 'application/x-www-form-urlencoded'
     })
 
-    t.same(req.body, { applicant_id: applicantId })
     t.same(req.query, {})
     return {
       ok: true,
@@ -282,48 +285,16 @@ test('applicant api', co(function* (t) {
   })
 
   result = yield api.uploadLivePhoto(applicant.id, {
-    file: new Buffer('some image')
+    file: new Buffer('some image'),
+    filename: 'selfie.jpg'
   })
 
   t.same(result, doc)
   t.end()
 }))
 
-// test.only('end to end', co(function* (t) {
-//   const { applicants, checks, reports } = createClient({
-//     db: memdb(),
-//     token: 'something'
-//   })
-
-//   const [applicant] = fixtures.applicants
-//   mock.post('https://api.onfido.com/v2/applicants', req => {
-//     return {
-//       ok: true,
-//       body: neuter(applicant)
-//     }
-//   })
-
-//   const applicant = yield applicants.create('billy', {
-//     first_name: 'billy',
-//     last_name: 'flynn',
-//     email: 'billyflynn@flynns.farm'
-//   })
-
-//   const stored = yield applicants.get('billy')
-//   t.same(stored, applicant)
-// }))
-
 function sortById (itemsWithIds) {
   return itemsWithIds.sort(function (a, b) {
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
-}
-
-function neuter (obj) {
-  const copy = shallowClone(obj)
-  // delete copy[externalApplicantIdProp]
-  // delete copy[applicantIdProp]
-  // delete copy[externalDocIdProp]
-  // delete copy[checkIdProp]
-  return copy
 }
