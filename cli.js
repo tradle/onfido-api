@@ -22,7 +22,9 @@ Object.keys(onfido).forEach(name => {
       const val = component[method].apply(component, arguments)
       if (!Promise.is(val)) return console.log(val)
 
-      val.then(console.log, console.error)
+      val.then(result => {
+        if (result) console.log(JSON.stringify(result, null, 2))
+      }, console.error)
     }
   })
 })

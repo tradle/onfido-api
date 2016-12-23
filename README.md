@@ -15,7 +15,7 @@ const onfido = new Onfido({ token })
 - get(applicantId)
 - create(applicantData)
 - update(applicantId, applicantData)
-- uploadDocument(applicantId, { type, ?side, ...fileOpts })
+- uploadDocument(applicantId, { type, ?side, ?file, ?filename, ?filepath })
 - uploadLivePhoto(applicantId, { type, ...fileOpts })
 - listDocuments()
 
