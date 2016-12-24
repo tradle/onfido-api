@@ -7,12 +7,16 @@ const path = require('path')
 const Promise = require('bluebird')
 const fs = Promise.promisifyAll(require('fs'))
 const repl = require('repl')
+const userHome = require('user-home')
 const co = Promise.coroutine
 const Onfido = require('./')
 const onfido = new Onfido({ token })
 const replServer = repl.start({
-  prompt: '> '
+  prompt: '> ',
+  ignoreUndefined: true
 })
+
+require('./history')(replServer, path.join(userHome, '.onfido_history'))
 
 Object.keys(onfido).forEach(name => {
   const api = replServer.context[name] = {}
