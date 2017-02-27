@@ -1,5 +1,7 @@
 
 const apis = require('./lib')
+const misc = require('./lib/misc')
+const { extend } = require('./lib/utils')
 
 module.exports = exports = function ({ token }) {
   const authenticated = {}
@@ -7,6 +9,7 @@ module.exports = exports = function ({ token }) {
     authenticated[name] = apis[name]({ token })
   })
 
+  authenticated.misc = misc(extend({ token }, authenticated))
   return authenticated
 }
 

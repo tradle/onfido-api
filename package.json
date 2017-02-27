@@ -21,7 +21,8 @@
     "user-home": "^2.0.0"
   },
   "scripts": {
-    "test": "node test"
+    "test": "node test",
+    "lint": "eslint --quiet --ignore-path .gitignore ."
   },
   "keywords": [
     "onfido",

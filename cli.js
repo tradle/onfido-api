@@ -5,6 +5,9 @@ if (!token) throw new Error('no token!')
 
 const path = require('path')
 const Promise = require('bluebird')
+const debug = require('debug')
+debug.enable('onfido:*')
+
 const fs = Promise.promisifyAll(require('fs'))
 const repl = require('repl')
 const userHome = require('user-home')
@@ -23,12 +26,16 @@ Object.keys(onfido).forEach(name => {
   const component = onfido[name]
   Object.keys(component).forEach(method => {
     api[method] = function () {
+      const start = Date.now()
       const val = component[method].apply(component, arguments)
       if (!Promise.is(val)) return console.log(val)
 
       val.then(result => {
         if (result) console.log(JSON.stringify(result, null, 2))
       }, console.error)
+      .finally(() => {
+        console.log(`time spent: ${(Date.now() - start)}ms`)
+      })
     }
   })
 })
