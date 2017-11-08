@@ -10,6 +10,7 @@ module.exports = exports = function ({ token }) {
   })
 
   authenticated.misc = misc(extend({ token }, authenticated))
+  authenticated.mode = token.split('_')[0] // test or live
   return authenticated
 }
 
