@@ -225,7 +225,7 @@ test('applicant api', co(function* (t) {
   // update
   reqBody = { email: 'blah@blah.com' }
   let updated = shallowClone(applicant, reqBody)
-  mock.post('https://api.onfido.com/v2/applicants/:applicantId', req => {
+  mock.put('https://api.onfido.com/v2/applicants/:applicantId', req => {
     t.same(req.params, { applicantId: applicant.id })
     t.same(req.headers, {
       accept: 'application/json',
